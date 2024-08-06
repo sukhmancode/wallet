@@ -1,126 +1,132 @@
-const express = require("express")
-const router = express.Router()
-const JWT_SECRET = require('../config')
-const jwt = require("jsonwebtoken")
+const express = require("express");
+const router = express.Router();
+const JWT_SECRET = require('../config');
+const jwt = require("jsonwebtoken");
 
-
-const zod = require("zod")
-const { User } = require("../db/db")
-const { authMiddleware } = require("../middleware/middleware")
+const zod = require("zod");
+const { User, Account } = require("../db/db");
+const { authMiddleware } = require("../middleware/middleware");
 
 const signupSchema = zod.object({
-    username:zod.string(),
-    password:zod.string(),
-    firstName:zod.string(),
-    password:zod.string()
-})
-router.post("/signup",async(req,res) => {
+    username: zod.string(),
+    lastName: zod.string(),
+    firstName: zod.string(),
+    password: zod.string()
+});
+
+router.post("/signup", async (req, res) => {
     const body = req.body;
-    const { success } = signupSchema.safeParse(req.body)
-    if(!success) {
-        return res.json({
-            msg:"email already taken / incorrect inputs"
-        })
-    } 
-
-    const user = User.findOne({
-        username:body.username
-    })
-
-    if(user._id) {
-        res.json({
-            msg:"email already taken"
-        })
+    const { success } = signupSchema.safeParse(body);
+    if (!success) {
+        return res.status(400).json({
+            msg: "email already taken / incorrect inputs"
+        });
     }
-    const dbUser = await User.create(body)
-    const token = jwt.sign({
-        userId:dbUser._id
-    },JWT_SECRET)
 
-    res.json({
-        message:"user created",
-        token:token
-    })
-})
+    const existingUser = await User.findOne({ username: body.username });
+    if (existingUser) {
+        return res.status(400).json({
+            msg: "email already taken"
+        });
+    }
 
-const signInbody = zod.object({
-    username:zod.string().email(),
-    password:zod.string()
-})
+    try {
+        const newUser = await User.create({
+            username: body.username,
+            password: body.password,
+            firstName: body.firstName,
+            lastName: body.lastName,
+        });
 
-router.post("/signIn",async(req,res) => {
-    const { success } = signInbody.safeParse(req.body)
+        await Account.create({
+            userId: newUser._id,
+            balance: 1 + Math.random() * 10000
+        });
 
-    if(!success) {
-        res.status(411).json({
-            message:"email already taken /incorrect" 
-        })
+        const token = jwt.sign({ userId: newUser._id }, JWT_SECRET);
+        res.json({
+            message: "user created",
+            token: token
+        });
+    } catch (err) {
+        console.log(err);
+        res.status(500).json({ message: "Internal server error" });
+    }
+});
+
+const signInSchema = zod.object({
+    username: zod.string().email(),
+    password: zod.string()
+});
+
+router.post("/signIn", async (req, res) => {
+    const { success } = signInSchema.safeParse(req.body);
+    if (!success) {
+        return res.status(400).json({
+            message: "email already taken / incorrect"
+        });
     }
 
     const user = await User.findOne({
-        username:req.body.username,
-        password:req.body.password
-    })
+        username: req.body.username,
+        password: req.body.password
+    });
+
     if (!user) {
-        return res.status(411).json({
+        return res.status(400).json({
             message: "Error while logging in"
         });
     }
-    const token = jwt.sign({
-        userId: user._id
-    }, JWT_SECRET);
-    res.json({
-        token: token
-    });
-    
-    res.status(411).json({
-        message: "Error while logging in"
-    })
 
-})
+    const token = jwt.sign({ userId: user._id }, JWT_SECRET);
+    res.json({ token: token });
+});
 
-const updateBody = zod.object({
-    password:zod.string().optional(),
-    firstName:zod.string().optional(),
-    lastName:zod.string().optional()
-})
-router.put("/",authMiddleware,async(req,res,next) => {
-    const {success} = updateBody.safeParse(req.body)
+const updateSchema = zod.object({
+    password: zod.string().optional(),
+    firstName: zod.string().optional(),
+    lastName: zod.string().optional()
+});
 
-    if(!success) {
-        res.status(411).json({
-            msg:"error while updating inputs"
-        })
+router.put("/", authMiddleware, async (req, res, next) => {
+    const { success } = updateSchema.safeParse(req.body);
+    if (!success) {
+        return res.status(400).json({
+            msg: "error while updating inputs"
+        });
     }
-    await User.updateOne(req.body,{
-        id:req.userId
-    })
-    res.json({
-        msg:'updated'
-    })
-})
-router.get("/bulk",async(req,res) => {
-    const filter = req.query.filter | "";
 
-    const users = await User.find(
-        {
-            $or:[{
-                firstName:{
-                    "$regex":filter
-                },lastName:{
-                    "$regex":filter
-                }
-            }]
-        }
-    )
-    res.json({
-        users: users.map((user) => ({
-            username: user.username,
-            firstName: user.firstName,
-            lastName: user.lastName,
-            _id: user._id
-        }))
-    });
-    
-})
-module.exports = router
+    try {
+        await User.updateOne({ _id: req.userId }, req.body);
+        res.json({ msg: 'updated' });
+    } catch (err) {
+        console.log(err);
+        res.status(500).json({ message: "Internal server error" });
+    }
+});
+
+router.get("/bulk", async (req, res) => {
+    const filter = req.query.filter || "";
+    try {
+        const users = await User.find({
+            $or: [
+                { firstName: { $regex: filter, $options: 'i' } },
+                { lastName: { $regex: filter, $options: 'i' } }
+            ]
+        });
+
+        res.json({
+            users: users.map(user => ({
+                username: user.username,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                _id: user._id
+            }))
+        });
+    } catch (err) {
+        console.log(err);
+        res.status(500).json({ message: "Internal server error" });
+    }
+});
+
+module.exports = router;

@@ -15,6 +15,10 @@ mongoose.connect(
 
 // Define the user schema
 const userSchema = new mongoose.Schema({
+  username: {
+    type:String,
+    required:true
+  },
   firstName: {
     type: String,
     required: true
