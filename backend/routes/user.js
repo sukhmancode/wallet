@@ -1,11 +1,18 @@
-const express = require("express");
+const express = require('express');
 const router = express.Router();
-const JWT_SECRET = require('../config');
-const jwt = require("jsonwebtoken");
+const jwt = require('jsonwebtoken');
+require('dotenv').config(); // Ensure this line is present to load .env file
 
-const zod = require("zod");
-const { User, Account } = require("../db/db");
-const { authMiddleware } = require("../middleware/middleware");
+const JWT_SECRET = process.env.JWT_SECRET;
+
+// Ensure JWT_SECRET is not undefined
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET is not defined. Please check your .env file.');
+}
+
+const zod = require('zod');
+const { User, Account } = require('../db/db');
+const { authMiddleware } = require('../middleware/middleware');
 
 const signupSchema = zod.object({
     username: zod.string(),
@@ -59,7 +66,7 @@ const signInSchema = zod.object({
     password: zod.string()
 });
 
-router.post("/signIn", async (req, res) => {
+router.post("/signin", async (req, res) => {
     const { success } = signInSchema.safeParse(req.body);
     if (!success) {
         return res.status(400).json({

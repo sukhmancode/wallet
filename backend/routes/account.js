@@ -14,6 +14,7 @@ router.get("/balance", authMiddleware, async (req, res, next) => {
       balance: account.balance,
     });
   } catch (error) {
+    console.log(error);
     next(error); // Pass error to error-handling middleware
   }
 });
